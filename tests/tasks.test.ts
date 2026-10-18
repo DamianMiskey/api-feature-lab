@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { app } from "@/api/app";
 
-const send = (method: string, path: string, body?: unknown) =>
+const send = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
   app.request(`/api${path}`, {
     method,
-    headers: body === undefined ? {} : { "content-type": "application/json" },
+    headers: body === undefined ? headers : { "content-type": "application/json", ...headers },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 
@@ -88,7 +88,8 @@ describe("OpenAPI", () => {
   it("documents every route from the same schemas that validate them", async () => {
     const doc = await (await send("GET", "/openapi.json")).json();
     expect(doc.openapi).toBe("3.1.0");
-    expect(Object.keys(doc.paths).sort()).toEqual(["/api/tasks", "/api/tasks/{id}"]);
+    expect(Object.keys(doc.paths).sort()).toEqual(["/api/tasks", "/api/tasks/{id}", "/api/v0/tasks", "/api/v2/tasks", "/api/v2/tasks/{id}"]);
+    expect(doc.paths["/api/v0/tasks"].get.deprecated).toBe(true);
     expect(Object.keys(doc.paths["/api/tasks/{id}"]).sort()).toEqual(["delete", "get", "patch"]);
     expect(Object.keys(doc.components.schemas)).toEqual(expect.arrayContaining(["Task", "NewTask", "TaskPatch", "Problem"]));
     expect(doc.paths["/api/tasks"].post.responses["422"].content).toHaveProperty("application/problem+json");

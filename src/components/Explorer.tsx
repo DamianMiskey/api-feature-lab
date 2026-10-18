@@ -4,30 +4,37 @@ import { useState } from "react";
 import { Button, cx } from "./ui";
 
 export type Method = "GET" | "POST" | "PATCH" | "DELETE";
-export type Preset = { label: string; method: Method; path: string; body?: string; note?: string };
+export type Preset = { label: string; method: Method; path: string; body?: string; headers?: Record<string, string>; note?: string };
 
 type Result = { status: number; statusText: string; ms: number; headers: [string, string][]; body: string };
 
 const METHOD_BG: Record<Method, string> = { GET: "bg-get", POST: "bg-post", PATCH: "bg-patch", DELETE: "bg-delete" };
 // Headers worth looking at; the rest (date, vary, CSP…) is noise for these demos.
-const SHOWN = new Set(["content-type", "location", "content-length", "etag", "cache-control", "retry-after", "allow"]);
+const SHOWN = new Set(["content-type", "location", "etag", "cache-control", "link", "vary", "api-version", "deprecation", "sunset", "retry-after", "allow"]);
 const PLACEHOLDER_ID = "00000000-0000-4000-8000-000000000000";
 
 const pretty = (text: string) => {
   try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 };
 
+type Vars = { id?: string; cursor?: string; etag?: string };
+const fill = (text: string, vars: Vars) =>
+  text.replace("{id}", vars.id ?? PLACEHOLDER_ID).replace("{cursor}", vars.cursor ?? "").replace("{etag}", vars.etag ?? '"none-yet"');
+
 // A tiny HTTP client on the page: pick a preset or edit the request, send it
 // to this site's own API with fetch(), and see the raw status line, headers
-// and body. "{id}" in a path is replaced by the last task this page created.
+// and body. Values carry over between requests: {id} is the last task this
+// page created, {cursor} the last nextCursor, {etag} the last ETag received.
 export function Explorer({ presets }: { presets: Preset[] }) {
   const [req, setReq] = useState<Preset>(presets[0]);
-  const [lastId, setLastId] = useState<string | null>(null);
+  const [vars, setVars] = useState<Vars>({});
   const [res, setRes] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const url = req.path.replace("{id}", lastId ?? PLACEHOLDER_ID);
+  const url = fill(req.path, vars);
+  const headers = Object.fromEntries(Object.entries(req.headers ?? {}).map(([k, v]) => [k, fill(v, vars)]));
   const hasBody = req.method === "POST" || req.method === "PATCH";
+  const used = (["id", "cursor", "etag"] as const).filter((k) => req.path.includes(`{${k}}`) || Object.values(req.headers ?? {}).some((v) => v.includes(`{${k}}`)));
 
   const send = async () => {
     setBusy(true);
@@ -35,15 +42,23 @@ export function Explorer({ presets }: { presets: Preset[] }) {
     try {
       const r = await fetch(url, {
         method: req.method,
-        headers: hasBody ? { "content-type": "application/json" } : undefined,
+        headers: { ...(hasBody ? { "content-type": "application/json" } : {}), ...headers },
         body: hasBody ? req.body ?? "" : undefined,
+        // Show the raw exchange: no browser cache answering on the API's behalf.
+        cache: "no-store",
       });
       const body = await r.text();
       setRes({ status: r.status, statusText: r.statusText, ms: Math.round(performance.now() - started), headers: [...r.headers].filter(([k]) => SHOWN.has(k)), body });
-      // Remember a newly created task, so the next request can use its id.
-      if (r.status === 201) {
-        try { setLastId(JSON.parse(body).id); } catch {}
-      }
+      // Remember values the next request may need.
+      const next: Vars = {};
+      const etag = r.headers.get("etag");
+      if (etag) next.etag = etag;
+      try {
+        const data = JSON.parse(body);
+        if (r.status === 201 && data.id) next.id = data.id;
+        if ("nextCursor" in data) next.cursor = data.nextCursor ?? undefined;
+      } catch {}
+      setVars((v) => ({ ...v, ...next }));
     } catch (e) {
       setRes({ status: 0, statusText: (e as Error).message, ms: 0, headers: [], body: "" });
     } finally {
@@ -77,10 +92,14 @@ export function Explorer({ presets }: { presets: Preset[] }) {
           <textarea id="explorer-body" className="mb-2 block h-24 w-full rounded-md border border-line bg-bg p-2 font-mono text-sm" value={req.body ?? ""} onChange={(e) => setReq({ ...req, body: e.target.value })} spellCheck={false} />
         </>
       )}
-      {req.path.includes("{id}") && (
-        <p className="text-sm text-muted">
-          <code>{"{id}"}</code> = {lastId ? <code>{lastId}</code> : <>no task created yet, so a made-up id (send <em>Create</em> first)</>}
-        </p>
+      {used.length > 0 && (
+        <ul className="my-1 list-none pl-0 text-sm text-muted">
+          {used.map((k) => (
+            <li key={k}>
+              <code>{`{${k}}`}</code> = {vars[k] ? <code className="break-all">{vars[k]}</code> : k === "id" ? <>no task created yet, so a made-up id (send <em>Create</em> first)</> : k === "cursor" ? <>empty: send the first page first</> : <>no ETag received yet</>}
+            </li>
+          ))}
+        </ul>
       )}
 
       <div className="mt-3 overflow-hidden rounded-xl border border-line" aria-live="polite">
@@ -88,6 +107,11 @@ export function Explorer({ presets }: { presets: Preset[] }) {
           <span className={cx("rounded px-1.5 py-0.5 text-xs font-bold text-white", METHOD_BG[req.method])}>{req.method}</span>
           <span className="min-w-0 break-all">{url}</span>
         </div>
+        {Object.keys(headers).length > 0 && (
+          <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-3 border-b border-line bg-code px-3 pb-2 font-mono text-xs">
+            {Object.entries(headers).map(([k, v]) => <div key={k} className="contents"><dt className="text-muted">{k}</dt><dd className="m-0 break-all">{v}</dd></div>)}
+          </dl>
+        )}
         {res ? (
           <div className="px-3 py-2">
             <p className="my-1 font-mono text-sm">

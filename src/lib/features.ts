@@ -20,11 +20,11 @@ export const features: Feature[] = [
   { slug: "openapi", name: "OpenAPI docs", category: "Foundations", phase: 1, ready: true,
     summary: "A spec generated from the code, rendered as documentation." },
 
-  { slug: "pagination", name: "Pagination", category: "HTTP semantics", phase: 2, ready: false,
+  { slug: "pagination", name: "Pagination", category: "HTTP semantics", phase: 2, ready: true,
     summary: "Cursor pagination that stays correct while data changes." },
-  { slug: "caching", name: "ETags & caching", category: "HTTP semantics", phase: 2, ready: false,
+  { slug: "caching", name: "ETags & caching", category: "HTTP semantics", phase: 2, ready: true,
     summary: "304 Not Modified, conditional updates and Cache-Control." },
-  { slug: "versioning", name: "Versioning", category: "HTTP semantics", phase: 2, ready: false,
+  { slug: "versioning", name: "Versioning", category: "HTTP semantics", phase: 2, ready: true,
     summary: "Evolving an API without breaking its clients." },
 
   { slug: "api-keys", name: "API keys & JWT", category: "Auth", phase: 3, ready: false,
