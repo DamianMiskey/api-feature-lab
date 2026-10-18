@@ -29,5 +29,10 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"], channel } },
     { name: "mobile", use: { ...devices["Pixel 7"], channel }, testMatch: /pages\.spec/ },
   ],
-  webServer: LIVE ? undefined : { command: "npm start -- -p 3300", url: BASE_URL, reuseExistingServer: !CI, timeout: 60_000 },
+  // The suite writes more than a visitor would: lift the anonymous write and
+  // key-creation limits for the local server (the limiter has its own tests).
+  webServer: LIVE ? undefined : {
+    command: "npm start -- -p 3300", url: BASE_URL, reuseExistingServer: !CI, timeout: 60_000,
+    env: { LAB_WRITE_LIMIT: "100000", LAB_KEY_LIMIT: "100000" },
+  },
 });

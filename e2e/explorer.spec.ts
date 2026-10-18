@@ -70,3 +70,33 @@ test("versioning page: two shapes of one task, and a deprecated version", async 
   await sendPreset(page, "Deprecated v0");
   await expect(page.locator("dt", { hasText: /^sunset$/ })).toBeVisible();
 });
+
+test("API keys page: 401, a scoped key, 403, a JWT, and revocation", async ({ page }) => {
+  await page.goto("/api-keys");
+  await sendPreset(page, "No credentials");
+  await expect(status(page)).toContainText("401");
+  await expect(page.locator("dt", { hasText: /^www-authenticate$/ })).toBeVisible();
+  await sendPreset(page, "Create key");
+  await expect(status(page)).toContainText("201");
+  await sendPreset(page, "Allowed");
+  await expect(status(page)).toContainText("200");
+  await sendPreset(page, "Missing scope");
+  await expect(status(page)).toContainText("403");
+  await sendPreset(page, "Get a token");
+  await expect(page.getByText("Inside the token")).toBeVisible();
+  await sendPreset(page, "Use the token");
+  await expect(page.locator("pre").filter({ hasText: '"method": "jwt"' })).toBeVisible();
+  await sendPreset(page, "Revoke the key");
+  await expect(status(page)).toContainText("204");
+  await sendPreset(page, "Use the token");
+  await expect(status(page)).toContainText("200"); // still valid until it expires
+});
+
+test("rate limiting page: a burst of 8 gets 5 through and 3 429s", async ({ page }) => {
+  await page.goto("/rate-limits");
+  await page.getByRole("button", { name: "Send 8 requests" }).click();
+  const rows = page.locator("tbody tr");
+  await expect(rows).toHaveCount(8);
+  await expect(rows.filter({ hasText: "429" })).toHaveCount(3);
+  await expect(rows.nth(7)).toContainText(/"demo";r=0;t=\d+/);
+});

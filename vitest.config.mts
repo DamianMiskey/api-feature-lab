@@ -6,5 +6,12 @@ import { defineConfig } from "vitest/config";
 // touch Neon. End-to-end tests (e2e/) are Playwright's.
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
-  test: { include: ["tests/**/*.test.ts"], environment: "node", testTimeout: 20_000 },
+  test: {
+    include: ["tests/**/*.test.ts"],
+    environment: "node",
+    testTimeout: 20_000,
+    // The tests write far more than a visitor would: lift the anonymous write
+    // and key-creation limits (the limiter itself is tested on its own).
+    env: { LAB_WRITE_LIMIT: "100000", LAB_KEY_LIMIT: "100000" },
+  },
 });
