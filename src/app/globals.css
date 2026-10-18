@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/* Design tokens, switched by the system's light/dark setting. Components use
+   them through the theme colours below (bg-surface, text-muted, border-line…),
+   so dark mode needs no dark: variants. */
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --line: #e3e2de;
+  --fg: #1d1d1b;
+  --muted: #64625d;
+  --accent: #0f766e; /* white text on it 5.5:1 */
+  --accent-ink: #0f766e;
+  --code: #f1f0ec;
+  --danger: #c0362c;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131312;
+    --surface: #1c1c1a;
+    --line: #2f2e2b;
+    --fg: #ecebe7;
+    --muted: #a09e97;
+    --accent: #0f766e; /* white text on it 5.5:1, and ≥ 3:1 against the dark backgrounds */
+    --accent-ink: #2dd4bf;
+    --code: #232321;
+    --danger: #ff7b6e;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-code: var(--code);
+  --color-danger: var(--danger);
+  /* HTTP method colours, used by the request explorer. */
+  --color-get: #15803d;
+  --color-post: #1d4ed8;
+  --color-patch: #a16207;
+  --color-delete: #b91c1c;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Element defaults for the explanatory text on every page. */
+@layer base {
+  body { @apply bg-bg font-sans text-[15px] leading-relaxed text-fg; }
+  a { @apply text-accent-ink; }
+  /* Links inside running text need more than colour to stand out (WCAG 1.4.1). */
+  article :is(p, li) a { @apply underline underline-offset-2; }
+  h1 { @apply mb-1.5 text-3xl leading-tight font-bold; }
+  h2 { @apply mb-2.5 text-[1.05rem] font-bold; }
+  h3 { @apply mt-5 mb-2 text-[0.95rem] font-bold; }
+  p { @apply my-3 first:mt-0; }
+  ul, ol { @apply my-0 pl-5; }
+  ol { @apply list-decimal; }
+  ul { @apply list-disc; }
+  code { @apply rounded bg-code px-1.5 py-0.5 font-mono text-[0.9em]; }
+  input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select {
+    @apply min-w-0 rounded-md border border-line bg-bg px-2 py-1.5 text-fg focus:outline-2 focus:outline-accent;
+  }
+  input[type="range"], input[type="checkbox"] { @apply accent-accent; }
+}
