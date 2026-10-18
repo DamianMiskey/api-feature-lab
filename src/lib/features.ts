@@ -27,9 +27,9 @@ export const features: Feature[] = [
   { slug: "versioning", name: "Versioning", category: "HTTP semantics", phase: 2, ready: true,
     summary: "Evolving an API without breaking its clients." },
 
-  { slug: "api-keys", name: "API keys & JWT", category: "Auth", phase: 3, ready: false,
+  { slug: "api-keys", name: "API keys & JWT", category: "Auth", phase: 3, ready: true,
     summary: "Hashed keys, signed tokens and scopes." },
-  { slug: "rate-limits", name: "Rate limiting", category: "Auth", phase: 3, ready: false,
+  { slug: "rate-limits", name: "Rate limiting", category: "Auth", phase: 3, ready: true,
     summary: "429s with Retry-After and RateLimit headers." },
 
   { slug: "idempotency", name: "Idempotency keys", category: "Reliability", phase: 4, ready: false,

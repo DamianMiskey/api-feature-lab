@@ -10,21 +10,43 @@ type Result = { status: number; statusText: string; ms: number; headers: [string
 
 const METHOD_BG: Record<Method, string> = { GET: "bg-get", POST: "bg-post", PATCH: "bg-patch", DELETE: "bg-delete" };
 // Headers worth looking at; the rest (date, vary, CSP…) is noise for these demos.
-const SHOWN = new Set(["content-type", "location", "etag", "cache-control", "link", "vary", "api-version", "deprecation", "sunset", "retry-after", "allow"]);
+const SHOWN = new Set(["content-type", "location", "etag", "cache-control", "link", "vary", "api-version", "deprecation", "sunset", "www-authenticate", "ratelimit-policy", "ratelimit", "retry-after", "allow"]);
 const PLACEHOLDER_ID = "00000000-0000-4000-8000-000000000000";
 
 const pretty = (text: string) => {
   try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 };
 
-type Vars = { id?: string; cursor?: string; etag?: string };
+type Vars = { id?: string; cursor?: string; etag?: string; key?: string; keyId?: string; token?: string };
 const fill = (text: string, vars: Vars) =>
-  text.replace("{id}", vars.id ?? PLACEHOLDER_ID).replace("{cursor}", vars.cursor ?? "").replace("{etag}", vars.etag ?? '"none-yet"');
+  text.replace("{id}", vars.id ?? PLACEHOLDER_ID).replace("{cursor}", vars.cursor ?? "").replace("{etag}", vars.etag ?? '"none-yet"')
+    .replace("{keyId}", vars.keyId ?? PLACEHOLDER_ID).replace("{key}", vars.key ?? "lab_no-key-yet").replace("{token}", vars.token ?? "no-token-yet");
+
+const VAR_NAMES = ["id", "cursor", "etag", "key", "keyId", "token"] as const;
+const MISSING: Record<(typeof VAR_NAMES)[number], string> = {
+  id: "no task created yet, so a made-up id (send Create first)",
+  cursor: "empty: send the first page first",
+  etag: "no ETag received yet",
+  key: "no key created yet (send Create key first)",
+  keyId: "no key created yet",
+  token: "no token yet (send Get a token first)",
+};
+
+/** A JWT's header and payload are base64url JSON: readable by anyone. */
+function decodeJwt(token: string) {
+  try {
+    const [h, p] = token.split(".").slice(0, 2).map((part) => JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))));
+    return { header: h, payload: p };
+  } catch {
+    return null;
+  }
+}
 
 // A tiny HTTP client on the page: pick a preset or edit the request, send it
 // to this site's own API with fetch(), and see the raw status line, headers
 // and body. Values carry over between requests: {id} is the last task this
-// page created, {cursor} the last nextCursor, {etag} the last ETag received.
+// page created, {cursor} the last nextCursor, {etag} the last ETag received,
+// {key}/{keyId} the last API key created and {token} the last JWT issued.
 export function Explorer({ presets }: { presets: Preset[] }) {
   const [req, setReq] = useState<Preset>(presets[0]);
   const [vars, setVars] = useState<Vars>({});
@@ -33,8 +55,9 @@ export function Explorer({ presets }: { presets: Preset[] }) {
 
   const url = fill(req.path, vars);
   const headers = Object.fromEntries(Object.entries(req.headers ?? {}).map(([k, v]) => [k, fill(v, vars)]));
-  const hasBody = req.method === "POST" || req.method === "PATCH";
-  const used = (["id", "cursor", "etag"] as const).filter((k) => req.path.includes(`{${k}}`) || Object.values(req.headers ?? {}).some((v) => v.includes(`{${k}}`)));
+  // A body box only when the request has a body (POST /api/token, say, has none).
+  const hasBody = (req.method === "POST" || req.method === "PATCH") && req.body !== undefined;
+  const used = VAR_NAMES.filter((k) => req.path.includes(`{${k}}`) || Object.values(req.headers ?? {}).some((v) => v.includes(`{${k}}`)));
 
   const send = async () => {
     setBusy(true);
@@ -55,7 +78,9 @@ export function Explorer({ presets }: { presets: Preset[] }) {
       if (etag) next.etag = etag;
       try {
         const data = JSON.parse(body);
-        if (r.status === 201 && data.id) next.id = data.id;
+        if (r.status === 201 && data.key) { next.key = data.key; next.keyId = data.id; }
+        else if (r.status === 201 && data.id) next.id = data.id;
+        if (data.access_token) next.token = data.access_token;
         if ("nextCursor" in data) next.cursor = data.nextCursor ?? undefined;
       } catch {}
       setVars((v) => ({ ...v, ...next }));
@@ -79,7 +104,10 @@ export function Explorer({ presets }: { presets: Preset[] }) {
 
       <form className="mb-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void send(); }}>
         <label className="sr-only" htmlFor="explorer-method">Method</label>
-        <select id="explorer-method" value={req.method} onChange={(e) => setReq({ ...req, method: e.target.value as Method })}>
+        <select id="explorer-method" value={req.method} onChange={(e) => {
+          const method = e.target.value as Method;
+          setReq({ ...req, method, body: req.body ?? (method === "POST" || method === "PATCH" ? "" : undefined) });
+        }}>
           {(["GET", "POST", "PATCH", "DELETE"] as Method[]).map((m) => <option key={m}>{m}</option>)}
         </select>
         <label className="sr-only" htmlFor="explorer-path">Path</label>
@@ -96,7 +124,7 @@ export function Explorer({ presets }: { presets: Preset[] }) {
         <ul className="my-1 list-none pl-0 text-sm text-muted">
           {used.map((k) => (
             <li key={k}>
-              <code>{`{${k}}`}</code> = {vars[k] ? <code className="break-all">{vars[k]}</code> : k === "id" ? <>no task created yet, so a made-up id (send <em>Create</em> first)</> : k === "cursor" ? <>empty: send the first page first</> : <>no ETag received yet</>}
+              <code>{`{${k}}`}</code> = {vars[k] ? <code className="break-all">{vars[k]}</code> : MISSING[k]}
             </li>
           ))}
         </ul>
@@ -123,6 +151,16 @@ export function Explorer({ presets }: { presets: Preset[] }) {
                 {res.headers.map(([k, v]) => <div key={k} className="contents"><dt className="text-muted">{k}</dt><dd className="m-0 break-all">{v}</dd></div>)}
               </dl>
             )}
+            {(() => {
+              const token = (() => { try { return JSON.parse(res.body).access_token as string | undefined; } catch { return undefined; } })();
+              const decoded = token && decodeJwt(token);
+              return decoded ? (
+                <div className="mt-2 rounded-lg border border-line p-2">
+                  <p className="m-0 text-sm"><strong>Inside the token</strong> <span className="text-muted">(decoded here, without the secret: a JWT is signed, not encrypted)</span></p>
+                  <pre className="m-0 mt-1 overflow-auto font-mono text-xs" tabIndex={0}>{JSON.stringify(decoded, null, 2)}</pre>
+                </div>
+              ) : null;
+            })()}
             {res.body
               ? <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-code px-3 py-2 font-mono text-xs" tabIndex={0}>{pretty(res.body)}</pre>
               : <p className="my-1 text-sm text-muted">No body.</p>}
