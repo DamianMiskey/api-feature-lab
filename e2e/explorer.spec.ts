@@ -31,3 +31,42 @@ test("errors page: each broken request gets the right status", async ({ page }) 
     await expect(status(page), label).toContainText(code);
   }
 });
+
+test("caching page: 304 for an unchanged task, 412 for a stale ETag", async ({ page }) => {
+  await page.goto("/caching");
+  await sendPreset(page, "Create");
+  await expect(status(page)).toContainText("201");
+  await sendPreset(page, "Get");
+  await expect(status(page)).toContainText("200");
+  await sendPreset(page, "Get, if changed");
+  await expect(status(page)).toContainText("304");
+  await sendPreset(page, "Save, if unchanged");
+  await expect(status(page)).toContainText("200");
+  await sendPreset(page, "Save with an old ETag");
+  await expect(status(page)).toContainText("412");
+});
+
+test("pagination page: the comparison shows offset repeating a row", async ({ page }) => {
+  await page.goto("/pagination");
+  await page.getByRole("button", { name: "Run the comparison" }).click();
+  const offset = page.locator("div").filter({ has: page.getByRole("heading", { name: "?offset=" }) }).last();
+  const cursor = page.locator("div").filter({ has: page.getByRole("heading", { name: "?cursor=" }) }).last();
+  await expect(offset.getByText("(again!)")).toHaveCount(1);
+  await expect(cursor.getByText("(again!)")).toHaveCount(0);
+  // And by hand: the cursor from page 1 fetches page 2.
+  await sendPreset(page, "First page");
+  await expect(page.locator("dt", { hasText: /^link$/ })).toBeVisible();
+  await sendPreset(page, "Next page");
+  await expect(status(page)).toContainText("200");
+});
+
+test("versioning page: two shapes of one task, and a deprecated version", async ({ page }) => {
+  await page.goto("/versioning");
+  await sendPreset(page, "Create");
+  await sendPreset(page, "Version 2 by header");
+  await expect(page.locator("pre").filter({ hasText: '"status": "open"' })).toBeVisible();
+  await sendPreset(page, "Unknown version");
+  await expect(status(page)).toContainText("400");
+  await sendPreset(page, "Deprecated v0");
+  await expect(page.locator("dt", { hasText: /^sunset$/ })).toBeVisible();
+});

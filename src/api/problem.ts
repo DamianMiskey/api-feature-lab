@@ -22,6 +22,8 @@ const TITLES: Record<string, string> = {
   validation: "Your request isn't valid",
   "not-found": "Not found",
   "method-not-allowed": "Method not allowed",
+  "precondition-failed": "The resource changed since you last read it",
+  "unsupported-version": "That API version doesn't exist",
   internal: "Something went wrong on our side",
 };
 
