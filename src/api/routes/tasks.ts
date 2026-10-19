@@ -31,7 +31,7 @@ const TaskV2 = z
   })
   .openapi("TaskV2");
 
-const toTask = (row: TaskRow): z.infer<typeof Task> => ({
+export const toTask = (row: TaskRow): z.infer<typeof Task> => ({
   id: row.id, title: row.title, done: row.done, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
 });
 const toTaskV2 = (row: TaskRow): z.infer<typeof TaskV2> => ({
@@ -112,7 +112,23 @@ async function listPage(c: Context, query: z.infer<typeof ListQuery>, basePath: 
   return { rows: shown, nextCursor, nextOffset: query.offset !== undefined && more ? query.offset + query.limit : undefined };
 }
 
-const findTask = async (id: string) => (await (await db()).select().from(tasks).where(eq(tasks.id, id)))[0];
+export const findTask = async (id: string) => (await (await db()).select().from(tasks).where(eq(tasks.id, id)))[0];
+
+/** Create a task, keeping only the newest MAX_TASKS. Shared with the tRPC and GraphQL endpoints. */
+export async function createTask(input: { title: string; done?: boolean }) {
+  const d = await db();
+  // createdAt is set here, with millisecond precision, rather than by
+  // Postgres (microseconds): cursors carry it as an ISO string, which must
+  // round-trip exactly.
+  const [row] = await d.insert(tasks).values({ title: input.title, done: input.done ?? false, createdAt: new Date(), updatedAt: new Date() }).returning();
+  const keep = d.select({ id: tasks.id }).from(tasks).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(MAX_TASKS);
+  await d.delete(tasks).where(notInArray(tasks.id, keep));
+  return row;
+}
+
+/** The newest tasks, for the tRPC and GraphQL endpoints (REST pages with cursors, above). */
+export const newestTasks = async (limit: number) =>
+  (await db()).select().from(tasks).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(limit);
 
 const missing = (c: Context, id: string) => problem(c, 404, "not-found", { detail: `There's no task ${id}.` });
 const badCursor = (c: Context) => problem(c, 422, "validation", { detail: "The cursor isn't one this API issued.", errors: [{ path: "query.cursor", message: "Invalid cursor" }] });
@@ -153,14 +169,7 @@ tasksApi.openapi(
     },
   }),
   async (c) => {
-    const input = c.req.valid("json");
-    const d = await db();
-    // createdAt is set here, with millisecond precision, rather than by
-    // Postgres (microseconds): cursors carry it as an ISO string, which must
-    // round-trip exactly.
-    const [row] = await d.insert(tasks).values({ title: input.title, done: input.done ?? false, createdAt: new Date(), updatedAt: new Date() }).returning();
-    const keep = d.select({ id: tasks.id }).from(tasks).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(MAX_TASKS);
-    await d.delete(tasks).where(notInArray(tasks.id, keep));
+    const row = await createTask(c.req.valid("json"));
     const task = toTask(row);
     c.header("Location", `/api/tasks/${row.id}`);
     c.header("ETag", await etagFor(task));

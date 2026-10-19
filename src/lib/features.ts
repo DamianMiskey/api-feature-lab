@@ -39,7 +39,7 @@ export const features: Feature[] = [
   { slug: "streaming", name: "Streaming (SSE)", category: "Reliability", phase: 4, ready: true,
     summary: "Server-Sent Events for a live leaderboard." },
 
-  { slug: "styles", name: "REST vs tRPC vs GraphQL", category: "API styles", phase: 5, ready: false,
+  { slug: "styles", name: "REST vs tRPC vs GraphQL", category: "API styles", phase: 5, ready: true,
     summary: "The same data through three API styles." },
 
   { slug: "portability", name: "One API, two platforms", category: "Platform", phase: 6, ready: false,
