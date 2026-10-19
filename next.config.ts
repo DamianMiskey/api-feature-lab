@@ -12,7 +12,8 @@ const policy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'self'",
+  // The Portability page also asks the Cloudflare Workers copy of the API.
+  "connect-src 'self' https://api-cf.djmiskey.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

@@ -45,6 +45,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The same API as a Cloudflare Worker: bundle it (no deploy, no secrets)
+      # to catch anything that only works in Node.js.
+      - name: Worker bundle
+        run: npm run worker:check
+
       - name: Install Playwright's Chromium
         run: npx playwright install --with-deps chromium
 

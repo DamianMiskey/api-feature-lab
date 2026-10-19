@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // The API alone (the pages stay on Vercel), as a second deployment of the
+  // same code: https://api-cf.djmiskey.com. Deploy with `npm run worker:deploy`.
+  "name": "api-feature-lab",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  // nodejs_compat: process.env is filled from the vars and secrets below, so
+  // the app reads its configuration the same way on both platforms.
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Only the Custom Domain, so Cloudflare creates its DNS record and
+  // certificate; no workers.dev URL, no preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "api-cf.djmiskey.com", "custom_domain": true }],
+
+  // Smart Placement: run the Worker near what it talks to most (Neon, in
+  // AWS us-east-1) rather than near each visitor. Every request makes several
+  // database round trips, so being next to the database matters more.
+  "placement": { "mode": "smart" },
+
+  "alias": { "@electric-sql/pglite": "./worker/no-pglite.ts" },
+
+  // Plain settings. Secrets (DATABASE_URL, JWT_SECRET) are set with
+  // `npx wrangler secret put`, never written here.
+  "vars": {
+    "LAB_PLATFORM": "cloudflare-workers",
+    // The tables already exist (Vercel's deployment created them): skip the
+    // create-if-missing statements, which would cost a dozen subrequests on
+    // every new isolate (the Free plan allows 50 per request).
+    "LAB_SCHEMA": "skip",
+    // Shorter live streams: each poll is a database subrequest.
+    "LAB_SSE_SECONDS": "15"
+  },
+
+  "observability": { "enabled": true }
+}

@@ -1,8 +1,10 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { trpcServer } from "@hono/trpc-server";
 import { cors } from "hono/cors";
+import { sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { type AuthEnv, authenticate } from "./auth";
+import { db } from "./db/client";
 import { idempotency } from "./idempotency";
 import { problem } from "./problem";
 import { rateLimit } from "./ratelimit";
@@ -25,8 +27,12 @@ export const app = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook }).bas
 // CORS tells browsers which origins may read the responses, and which extra
 // request headers (Idempotency-Key) they may send. Only these endpoints, and
 // only these origins; everything else stays same-origin.
+// /platform is read cross-origin too: the Portability page on api.djmiskey.com
+// asks both deployments (this app on Vercel and on Cloudflare) the same thing.
+const ORIGINS = new Set(["https://motion.djmiskey.com", "https://api.djmiskey.com"]);
+app.use("/platform", cors({ origin: (origin) => (ORIGINS.has(origin) || /^http:\/\/localhost:\d+$/.test(origin) ? origin : null), allowMethods: ["GET"] }));
 app.use("/scores/*", cors({
-  origin: (origin) => (origin === "https://motion.djmiskey.com" || /^http:\/\/localhost:\d+$/.test(origin) ? origin : null),
+  origin: (origin) => (ORIGINS.has(origin) || /^http:\/\/localhost:\d+$/.test(origin) ? origin : null),
   allowMethods: ["GET", "POST"],
   allowHeaders: ["content-type", "idempotency-key", "last-event-id"],
   exposeHeaders: ["etag", "idempotent-replayed", "ratelimit", "ratelimit-policy", "retry-after"],
@@ -52,6 +58,23 @@ app.on(["POST", "PATCH", "DELETE"], "/tasks/*", rateLimit({
 app.on("POST", "/tasks", idempotency({ required: false }));
 
 app.get("/health", (c) => c.json({ ok: true }));
+
+// Where this copy of the API is running, and how far its database is. The
+// same code answers on Vercel (Node.js) and on Cloudflare Workers (workerd).
+app.get("/platform", async (c) => {
+  const started = performance.now();
+  await (await db()).execute(sql`select 1`);
+  const dbMs = Math.round(performance.now() - started);
+  const cf = (c.req.raw as Request & { cf?: { colo?: string } }).cf;
+  c.header("Cache-Control", "no-store");
+  return c.json({
+    platform: process.env.LAB_PLATFORM ?? (process.env.VERCEL ? "vercel" : "local"),
+    runtime: globalThis.navigator?.userAgent ?? "unknown",
+    region: cf?.colo ?? process.env.VERCEL_REGION ?? null,
+    database: process.env.DATABASE_URL ? "neon" : "pglite",
+    dbMs,
+  });
+});
 app.route("/", tasksApi);
 app.route("/", authApi);
 app.route("/", limitsApi);

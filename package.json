@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "worker:dev": "wrangler dev",
+    "worker:check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.10",
@@ -39,6 +42,7 @@
     "postcss": "8.5.30",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "wrangler": "4.149.0"
   }
 }
