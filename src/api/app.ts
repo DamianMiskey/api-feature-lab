@@ -1,17 +1,34 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { type AuthEnv, authenticate } from "./auth";
+import { idempotency } from "./idempotency";
 import { problem } from "./problem";
 import { rateLimit } from "./ratelimit";
 import { authApi } from "./routes/auth";
 import { limitsApi } from "./routes/limits";
+import { scoresApi } from "./routes/scores";
 import { tasksApi } from "./routes/tasks";
 import { validationHook } from "./validation";
+import { webhooksApi } from "./routes/webhooks";
+import { setTransport } from "./webhooks";
 
 // The whole API: one Hono app under /api, mounted into Next.js by
 // src/app/api/[[...route]]/route.ts. Hono only sees standard Request and
 // Response objects, so the same app could run on Workers, Deno or Bun.
 export const app = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook }).basePath("/api");
+
+// The leaderboards are called from the Motion lab's pages, another origin:
+// CORS tells browsers which origins may read the responses, and which extra
+// request headers (Idempotency-Key) they may send. Only these endpoints, and
+// only these origins; everything else stays same-origin.
+app.use("/scores/*", cors({
+  origin: (origin) => (origin === "https://motion.djmiskey.com" || /^http:\/\/localhost:\d+$/.test(origin) ? origin : null),
+  allowMethods: ["GET", "POST"],
+  allowHeaders: ["content-type", "idempotency-key", "last-event-id"],
+  exposeHeaders: ["etag", "idempotent-replayed", "ratelimit", "ratelimit-policy", "retry-after"],
+  maxAge: 600,
+}));
 
 // Every request: check credentials if any were sent (see auth.ts).
 app.use("*", authenticate);
@@ -27,10 +44,20 @@ app.on(["POST", "PATCH", "DELETE"], "/tasks/*", rateLimit({
   limit: (c) => (c.get("auth") ? 120 : Number(process.env.LAB_WRITE_LIMIT ?? 30)),
 }));
 
+// Creating a task takes an Idempotency-Key too, but doesn't insist on one.
+// (POST /scores insists: see routes/scores.ts.)
+app.on("POST", "/tasks", idempotency({ required: false }));
+
 app.get("/health", (c) => c.json({ ok: true }));
 app.route("/", tasksApi);
 app.route("/", authApi);
 app.route("/", limitsApi);
+app.route("/", scoresApi);
+app.route("/", webhooksApi);
+
+// Webhook deliveries to the demo inboxes go straight to this app, rather than
+// out to the internet and back in (see webhooks.ts).
+setTransport((request) => Promise.resolve(app.fetch(request)));
 
 // The OpenAPI document is generated from the same Zod schemas that validate
 // requests, so the docs can't drift from the code.

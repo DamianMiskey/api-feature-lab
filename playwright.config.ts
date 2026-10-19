@@ -33,6 +33,6 @@ export default defineConfig({
   // key-creation limits for the local server (the limiter has its own tests).
   webServer: LIVE ? undefined : {
     command: "npm start -- -p 3300", url: BASE_URL, reuseExistingServer: !CI, timeout: 60_000,
-    env: { LAB_WRITE_LIMIT: "100000", LAB_KEY_LIMIT: "100000" },
+    env: { LAB_WRITE_LIMIT: "100000", LAB_KEY_LIMIT: "100000", LAB_SCORE_LIMIT: "100000", LAB_INBOX_LIMIT: "100000" },
   },
 });

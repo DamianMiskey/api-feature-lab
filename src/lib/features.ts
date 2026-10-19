@@ -32,12 +32,12 @@ export const features: Feature[] = [
   { slug: "rate-limits", name: "Rate limiting", category: "Auth", phase: 3, ready: true,
     summary: "429s with Retry-After and RateLimit headers." },
 
-  { slug: "idempotency", name: "Idempotency keys", category: "Reliability", phase: 4, ready: false,
+  { slug: "idempotency", name: "Idempotency keys", category: "Reliability", phase: 4, ready: true,
     summary: "Retry a POST safely: the second one changes nothing." },
-  { slug: "webhooks", name: "Webhooks", category: "Reliability", phase: 4, ready: false,
+  { slug: "webhooks", name: "Webhooks", category: "Reliability", phase: 4, ready: true,
     summary: "Signed deliveries with retries and verification." },
-  { slug: "streaming", name: "Streaming (SSE)", category: "Reliability", phase: 4, ready: false,
-    summary: "Server-Sent Events for live progress." },
+  { slug: "streaming", name: "Streaming (SSE)", category: "Reliability", phase: 4, ready: true,
+    summary: "Server-Sent Events for a live leaderboard." },
 
   { slug: "styles", name: "REST vs tRPC vs GraphQL", category: "API styles", phase: 5, ready: false,
     summary: "The same data through three API styles." },
