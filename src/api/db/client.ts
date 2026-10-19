@@ -26,6 +26,8 @@ let ready: Promise<Db> | undefined;
 /** The database, connected and with its tables created, once per instance. */
 export function db(): Promise<Db> {
   ready ??= connect().then(async (d) => {
+    // The Worker shares the production database, whose tables already exist.
+    if (process.env.LAB_SCHEMA === "skip") return d;
     for (const statement of SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean)) {
       await d.execute(statement);
     }

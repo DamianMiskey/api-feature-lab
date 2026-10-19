@@ -42,7 +42,7 @@ export const features: Feature[] = [
   { slug: "styles", name: "REST vs tRPC vs GraphQL", category: "API styles", phase: 5, ready: true,
     summary: "The same data through three API styles." },
 
-  { slug: "portability", name: "One API, two platforms", category: "Platform", phase: 6, ready: false,
+  { slug: "portability", name: "One API, two platforms", category: "Platform", phase: 6, ready: true,
     summary: "The same Hono app on Vercel and Cloudflare Workers." },
 ];
 

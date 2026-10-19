@@ -54,3 +54,7 @@ skills-lock.json
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Cloudflare Workers (wrangler)
+.wrangler
+.dev.vars*
