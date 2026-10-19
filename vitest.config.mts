@@ -11,7 +11,7 @@ export default defineConfig({
     environment: "node",
     testTimeout: 20_000,
     // The tests write far more than a visitor would: lift the anonymous write
-    // and key-creation limits (the limiter itself is tested on its own).
-    env: { LAB_WRITE_LIMIT: "100000", LAB_KEY_LIMIT: "100000" },
+    // key-creation, score and inbox limits (the limiter itself is tested on its own).
+    env: { LAB_WRITE_LIMIT: "100000", LAB_KEY_LIMIT: "100000", LAB_SCORE_LIMIT: "100000", LAB_INBOX_LIMIT: "100000" },
   },
 });

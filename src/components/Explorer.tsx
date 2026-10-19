@@ -10,7 +10,7 @@ type Result = { status: number; statusText: string; ms: number; headers: [string
 
 const METHOD_BG: Record<Method, string> = { GET: "bg-get", POST: "bg-post", PATCH: "bg-patch", DELETE: "bg-delete" };
 // Headers worth looking at; the rest (date, vary, CSP…) is noise for these demos.
-const SHOWN = new Set(["content-type", "location", "etag", "cache-control", "link", "vary", "api-version", "deprecation", "sunset", "www-authenticate", "ratelimit-policy", "ratelimit", "retry-after", "allow"]);
+const SHOWN = new Set(["content-type", "location", "etag", "cache-control", "link", "vary", "api-version", "deprecation", "sunset", "www-authenticate", "ratelimit-policy", "ratelimit", "retry-after", "allow", "idempotent-replayed"]);
 const PLACEHOLDER_ID = "00000000-0000-4000-8000-000000000000";
 
 const pretty = (text: string) => {

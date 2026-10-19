@@ -27,6 +27,10 @@ const TITLES: Record<string, string> = {
   unauthorized: "Authentication required",
   forbidden: "Not allowed with these credentials",
   "rate-limited": "Too many requests",
+  "idempotency-key-missing": "This request needs an Idempotency-Key header",
+  "idempotency-key-reused": "That Idempotency-Key was already used for a different request",
+  "request-in-progress": "A request with this Idempotency-Key is still being processed",
+  "invalid-signature": "The webhook signature doesn't check out",
   unavailable: "Not available right now",
   internal: "Something went wrong on our side",
 };
