@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { trpcServer } from "@hono/trpc-server";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { type AuthEnv, authenticate } from "./auth";
@@ -6,9 +7,11 @@ import { idempotency } from "./idempotency";
 import { problem } from "./problem";
 import { rateLimit } from "./ratelimit";
 import { authApi } from "./routes/auth";
+import { graphqlApi } from "./routes/graphql";
 import { limitsApi } from "./routes/limits";
 import { scoresApi } from "./routes/scores";
 import { tasksApi } from "./routes/tasks";
+import { appRouter } from "./trpc";
 import { validationHook } from "./validation";
 import { webhooksApi } from "./routes/webhooks";
 import { setTransport } from "./webhooks";
@@ -54,6 +57,18 @@ app.route("/", authApi);
 app.route("/", limitsApi);
 app.route("/", scoresApi);
 app.route("/", webhooksApi);
+
+// The same data in two other API styles (the "REST vs tRPC vs GraphQL" page).
+// They live outside the OpenAPI document: tRPC clients get their types from
+// the router itself, GraphQL clients from the schema (introspection).
+// tRPC mutations are POSTs and share the REST writes budget.
+app.on("POST", "/trpc/*", rateLimit({
+  name: "writes",
+  windowSec: 60,
+  limit: (c) => (c.get("auth") ? 120 : Number(process.env.LAB_WRITE_LIMIT ?? 30)),
+}));
+app.use("/trpc/*", trpcServer({ endpoint: "/api/trpc", router: appRouter, createContext: (_opts, c) => ({ auth: c.get("auth") }) }));
+app.route("/", graphqlApi);
 
 // Webhook deliveries to the demo inboxes go straight to this app, rather than
 // out to the internet and back in (see webhooks.ts).
