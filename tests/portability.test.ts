@@ -22,6 +22,12 @@ describe("/api/platform", () => {
 });
 
 describe("the Worker entry point", () => {
+  it("sends visitors of the bare domain to the page about it", async () => {
+    const res = await worker.fetch(new Request("https://api-cf.djmiskey.com/"), {}, ctx);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://api.djmiskey.com/portability");
+  });
+
   it("serves the same app", async () => {
     const res = await worker.fetch(new Request("https://api-cf.djmiskey.com/api/health"), {}, ctx);
     expect(await res.json()).toEqual({ ok: true });
