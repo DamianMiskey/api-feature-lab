@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "./db/client";
+import { annotate, outgoingTraceparent } from "./observe";
 import { type DeliveryRow, type EventRow, events, webhookAttempts, webhookDeliveries, webhookEndpoints } from "./db/schema";
 
 // Webhooks: the API calls its subscribers when something happens, instead of
@@ -120,6 +121,9 @@ async function attempt(delivery: DeliveryRow, now: Date) {
       method: "POST",
       headers: {
         "content-type": "application/json", "user-agent": "api-feature-lab-webhooks/1",
+        // The delivery continues the trace of the request that caused it, so
+        // the inbox's log line has the same request id.
+        ...(outgoingTraceparent() ? { traceparent: outgoingTraceparent()! } : {}),
         "webhook-id": id, "webhook-timestamp": timestamp, "webhook-signature": await sign(endpoint.secret, id, timestamp, body),
       },
       body,
@@ -161,5 +165,6 @@ export async function processDue({ endpointId, eventId, now = new Date() }: { en
     .returning();
   // The lease is in the row now; attempt() works from the claimed copy.
   for (const delivery of claimed) await attempt(delivery, now);
+  if (claimed.length) annotate({ webhookAttempts: claimed.length });
   return claimed.length;
 }

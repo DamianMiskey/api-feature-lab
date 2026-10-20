@@ -3,6 +3,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import type { AuthEnv } from "./auth";
 import { db } from "./db/client";
 import { idempotencyKeys } from "./db/schema";
+import { annotate } from "./observe";
 import { problem } from "./problem";
 import { clientId } from "./ratelimit";
 
@@ -67,9 +68,11 @@ export const idempotency = ({ required }: { required: boolean }): MiddlewareHand
       return problem(c, 409, "request-in-progress", { detail: "The first request with this key hasn't finished. Retry in a moment." });
     }
     // The replay: the same status, headers and body as the first time.
+    annotate({ idempotency: "replayed" });
     return new Response(seen.body, { status: seen.status, headers: { ...seen.headers, "idempotent-replayed": "true" } });
   }
 
+  annotate({ idempotency: "first" });
   await next();
 
   // Only successes are remembered. A failure (invalid body, 429, a crash)

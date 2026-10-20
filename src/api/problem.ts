@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { current } from "./observe";
 
 // Errors as RFC 9457 "Problem Details": one predictable JSON shape for every
 // failure, with its own media type, so clients can handle errors generically.
@@ -12,6 +13,7 @@ export const Problem = z
     detail: z.string().optional(),
     instance: z.string().optional().openapi({ example: "/api/tasks" }),
     errors: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
+    requestId: z.string().optional().openapi({ description: "Quote this when reporting a problem: it finds the request in the logs" }),
   })
   .openapi("Problem");
 
@@ -47,6 +49,7 @@ export function problem<S extends ContentfulStatusCode>(
     status,
     instance: new URL(c.req.url).pathname,
     ...extra,
+    requestId: current()?.requestId,
   };
   // c.json keeps the response typed for the OpenAPI routes; the explicit
   // content-type replaces its default application/json.

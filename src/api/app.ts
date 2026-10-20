@@ -6,6 +6,7 @@ import { HTTPException } from "hono/http-exception";
 import { type AuthEnv, authenticate } from "./auth";
 import { db } from "./db/client";
 import { idempotency } from "./idempotency";
+import { log, observe } from "./observe";
 import { problem } from "./problem";
 import { rateLimit } from "./ratelimit";
 import { authApi } from "./routes/auth";
@@ -27,6 +28,9 @@ export const app = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook }).bas
 // CORS tells browsers which origins may read the responses, and which extra
 // request headers (Idempotency-Key) they may send. Only these endpoints, and
 // only these origins; everything else stays same-origin.
+// First of all: give the request an id and a log record (see observe.ts).
+app.use("*", observe);
+
 // /platform is read cross-origin too: the Portability page on api.djmiskey.com
 // asks both deployments (this app on Vercel and on Cloudflare) the same thing.
 const ORIGINS = new Set(["https://motion.djmiskey.com", "https://api.djmiskey.com"]);
@@ -116,6 +120,6 @@ app.onError((err, c) => {
     // Hono's JSON validator throws 400 for a body that isn't valid JSON.
     return problem(c, err.status === 400 ? 400 : 500, err.status === 400 ? "bad-request" : "internal", { detail: err.message });
   }
-  console.error(err);
+  log("error", "unhandled error", { error: err.message, stack: err.stack?.split("\n").slice(0, 6).join("\n") });
   return problem(c, 500, "internal");
 });

@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { sql } from "drizzle-orm";
 import type { AuthEnv } from "./auth";
 import { db } from "./db/client";
+import { annotate } from "./observe";
 import { problem } from "./problem";
 
 // A sliding-window rate limiter on Postgres. Each client gets a counter per
@@ -51,6 +52,7 @@ export const rateLimit = ({ name, limit, windowSec }: Limit): MiddlewareHandler<
   c.header("RateLimit-Policy", `"${name}";q=${max};w=${windowSec}`);
   c.header("RateLimit", `"${name}";r=${Math.max(0, Math.floor(max - estimate))};t=${resetSec}`);
   if (estimate > max) {
+    annotate({ rateLimited: name });
     c.header("Retry-After", String(resetSec));
     return problem(c, 429, "rate-limited", { detail: `At most ${max} requests per ${windowSec} seconds. Try again in ${resetSec}s.` });
   }
