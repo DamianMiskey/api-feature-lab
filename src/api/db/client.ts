@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
+import { countQuery } from "../observe";
 import { SCHEMA_SQL } from "./schema";
 
 // Two Postgres backends, one set of queries:
@@ -10,15 +11,19 @@ import { SCHEMA_SQL } from "./schema";
 //   WebAssembly, in memory. Nothing to install, nothing shared, nothing kept.
 type Db = ReturnType<typeof drizzlePglite>;
 
+// Drizzle calls this for every query: each one counts against the request
+// that ran it, so its log line says how many round trips it cost.
+const queryCounter = { logQuery: () => countQuery() };
+
 async function connect(): Promise<Db> {
   const url = process.env.DATABASE_URL;
   if (url) {
     // The two drivers expose the same query builder; only transactions differ
     // (neon-http has none), and this lab doesn't use them.
-    return drizzleNeon(neon(url)) as unknown as Db;
+    return drizzleNeon(neon(url), { logger: queryCounter }) as unknown as Db;
   }
   const { PGlite } = await import("@electric-sql/pglite");
-  return drizzlePglite(new PGlite());
+  return drizzlePglite(new PGlite(), { logger: queryCounter });
 }
 
 let ready: Promise<Db> | undefined;

@@ -6,6 +6,7 @@ import { db } from "../db/client";
 import { events, type ScoreRow, scores } from "../db/schema";
 import { etagFor, isNotModified } from "../http";
 import { idempotency } from "../idempotency";
+import { annotate, log } from "../observe";
 import { Problem } from "../problem";
 import { rateLimit } from "../ratelimit";
 import { validationHook } from "../validation";
@@ -127,6 +128,7 @@ scoresApi.openapi(
     const keep = d.select({ id: scores.id }).from(scores).where(eq(scores.game, input.game)).orderBy(...order(input.game)).limit(KEEP_PER_GAME);
     await d.delete(scores).where(and(eq(scores.game, input.game), notInArray(scores.id, keep)));
     const created = { id: row.id, game: input.game, initials: row.initials, value: row.value, rank, createdAt: row.createdAt.toISOString() };
+    annotate({ game: input.game, rank });
     // Tell the subscribers: the event is stored first, then each webhook gets
     // its first attempt now; failures are retried later.
     const { event } = await recordEvent("score.submitted", created);
@@ -169,6 +171,8 @@ scoresApi.openapi(
       // EventSource reconnects by itself (after `retry` ms) with Last-Event-ID,
       // and continues where this one stopped.
       const end = Date.now() + STREAM_SECONDS * 1000;
+      const opened = Date.now();
+      let sent = resumeFrom > 0 ? 0 : 1;
       let quietSince = Date.now();
       while (!stream.aborted && Date.now() < end) {
         const fresh = await d.select().from(events).where(gt(events.id, cursor)).orderBy(asc(events.id)).limit(100);
@@ -177,6 +181,7 @@ scoresApi.openapi(
           const mine = fresh.filter((e) => e.type === "score.submitted" && e.data.game === game);
           if (mine.length) {
             await stream.writeSSE({ event: "board", id: String(cursor), data: JSON.stringify({ ...(await board(game, limit)), latest: mine.at(-1)!.data }) });
+            sent++;
             quietSince = Date.now();
           }
         }
@@ -187,6 +192,9 @@ scoresApi.openapi(
         }
         await stream.sleep(1000);
       }
+      // The request's own log line was written when the stream opened; this
+      // one says how it went.
+      log("info", "stream closed", { route: "/api/scores/stream", game, events: sent, durationMs: Date.now() - opened, aborted: stream.aborted });
     });
   },
 );

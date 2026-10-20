@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { AuthEnv } from "../auth";
 import { db } from "../db/client";
 import { events, webhookAttempts, webhookDeliveries, webhookEndpoints, webhookReceipts } from "../db/schema";
+import { annotate } from "../observe";
 import { Problem, problem } from "../problem";
 import { rateLimit } from "../ratelimit";
 import { validationHook } from "../validation";
@@ -128,7 +129,7 @@ webhooksApi.openapi(
     const body = await c.req.text();
     const messageId = c.req.header("webhook-id");
     const failure = await verify(endpoint.secret, { id: messageId, timestamp: c.req.header("webhook-timestamp"), signature: c.req.header("webhook-signature") }, body);
-    if (failure) return problem(c, 401, "invalid-signature", { detail: `Rejected: ${failure}.` });
+    if (failure) { annotate({ webhook: "bad-signature" }); return problem(c, 401, "invalid-signature", { detail: `Rejected: ${failure}.` }); }
     // 2. The demo's flaky subscriber: refuse each message failFirst times.
     const [receipt] = await d.insert(webhookReceipts).values({ endpointId: id, messageId: messageId! })
       .onConflictDoUpdate({ target: [webhookReceipts.endpointId, webhookReceipts.messageId], set: { endpointId: sql`excluded.endpoint_id` } })
@@ -136,12 +137,14 @@ webhooksApi.openapi(
     if (receipt.refusals < endpoint.failFirst) {
       await d.update(webhookReceipts).set({ refusals: receipt.refusals + 1 })
         .where(and(eq(webhookReceipts.endpointId, id), eq(webhookReceipts.messageId, messageId!), lt(webhookReceipts.refusals, endpoint.failFirst)));
+      annotate({ webhook: "refused" });
       return problem(c, 503, "unavailable", { detail: `Refusing on purpose (${receipt.refusals + 1} of ${endpoint.failFirst}).` });
     }
     // 3. Process each message once. Senders deliver "at least once": if our
     // 200 got lost, the same webhook-id comes again, and must be a no-op.
     const first = await d.update(webhookReceipts).set({ processedAt: new Date() })
       .where(and(eq(webhookReceipts.endpointId, id), eq(webhookReceipts.messageId, messageId!), isNull(webhookReceipts.processedAt))).returning();
+    annotate({ webhook: first.length ? "processed" : "duplicate" });
     return c.json({ received: true, duplicate: first.length === 0 }, 200);
   },
 );
