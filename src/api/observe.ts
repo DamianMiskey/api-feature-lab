@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { MiddlewareHandler } from "hono";
+import { waitUntil } from "@vercel/functions";
+import type { Context, MiddlewareHandler } from "hono";
 import type { AuthEnv } from "./auth";
+import { exporting, exportLogs, type LogLine, SERVICE_NAME } from "./telemetry";
 
 // Structured logging, one "canonical log line" per request: instead of many
 // scattered messages, each request writes one JSON object at the end with
@@ -16,7 +18,13 @@ import type { AuthEnv } from "./auth";
 // from a score submission into the webhook deliveries it causes).
 
 export type Fields = Record<string, string | number | boolean | null | undefined>;
-type Record_ = { requestId: string; spanId: string; started: number; dbQueries: number; fields: Fields };
+type Record_ = {
+  requestId: string; spanId: string; started: number; dbQueries: number; fields: Fields;
+  /** Lines logged during the request, shipped together when it ends. */
+  lines: LogLine[];
+  /** Set once the request's lines have gone: later ones (a closing stream) ship on their own. */
+  ship?: (lines: LogLine[]) => void;
+};
 
 const storage = new AsyncLocalStorage<Record_>();
 
@@ -50,17 +58,35 @@ export function outgoingTraceparent() {
   return record ? `00-${record.requestId}-${hex(8)}-01` : undefined;
 }
 
-/** Write one JSON log line. Vercel's and Cloudflare's log viewers both index JSON fields. */
+/**
+ * Write one JSON log line to stdout (Vercel's and Cloudflare's log viewers
+ * both index JSON fields) and, in production, queue it for Grafana.
+ */
 export function log(level: "info" | "warn" | "error", msg: string, fields: Fields = {}) {
   const record = storage.getStore();
-  const line = JSON.stringify({ ts: new Date().toISOString(), level, msg, requestId: record?.requestId, ...fields });
-  (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
+  const line: LogLine = { ts: new Date().toISOString(), level, msg, requestId: record?.requestId, ...fields };
+  (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(JSON.stringify(line));
+  if (!record || !exporting()) return;
+  if (record.ship) record.ship([line]);
+  else record.lines.push(line);
+}
+
+/**
+ * Run work after the response has been sent. Workers hand Hono an execution
+ * context with waitUntil; on Vercel, @vercel/functions provides the same.
+ * (Elsewhere the promise simply runs.)
+ */
+function background(c: Context, work: Promise<unknown>) {
+  let ctx: { waitUntil(p: Promise<unknown>): void } | undefined;
+  try { ctx = c.executionCtx; } catch { /* not on Workers */ }
+  if (ctx) ctx.waitUntil(work);
+  else waitUntil(work);
 }
 
 const platform = () => process.env.LAB_PLATFORM ?? (process.env.VERCEL ? "vercel" : "local");
 
 export const observe: MiddlewareHandler<AuthEnv> = (c, next) => {
-  const record: Record_ = { requestId: traceIdFrom(c.req.header("traceparent")) ?? hex(16), spanId: hex(8), started: performance.now(), dbQueries: 0, fields: {} };
+  const record: Record_ = { requestId: traceIdFrom(c.req.header("traceparent")) ?? hex(16), spanId: hex(8), started: performance.now(), dbQueries: 0, fields: {}, lines: [] };
   return storage.run(record, async () => {
     c.header("X-Request-Id", record.requestId);
     try {
@@ -84,6 +110,18 @@ export const observe: MiddlewareHandler<AuthEnv> = (c, next) => {
         region: process.env.VERCEL_REGION ?? (c.req.raw as Request & { cf?: { colo?: string } }).cf?.colo,
         ...record.fields,
       });
+      if (exporting()) {
+        // Who sent the telemetry: OpenTelemetry "resource" attributes.
+        const resource = {
+          "service.name": SERVICE_NAME,
+          "deployment.environment.name": process.env.VERCEL_ENV ?? (process.env.LAB_PLATFORM ? "production" : "local"),
+          "cloud.platform": platform(),
+          "cloud.region": process.env.VERCEL_REGION ?? (c.req.raw as Request & { cf?: { colo?: string } }).cf?.colo,
+        };
+        record.ship = (lines) => background(c, exportLogs(lines, resource));
+        record.ship(record.lines);
+        record.lines = [];
+      }
     }
   });
 };
