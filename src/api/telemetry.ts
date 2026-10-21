@@ -1,5 +1,5 @@
-// Shipping telemetry to Grafana Cloud over OTLP (the OpenTelemetry Protocol),
-// as HTTP + JSON. Vercel's own exporter (Drains) is Pro-only, so on Hobby the
+// Shipping telemetry (log lines to Loki, spans to Tempo) to Grafana Cloud over
+// OTLP (the OpenTelemetry Protocol), as HTTP + JSON. Vercel's own exporter (Drains) is Pro-only, so on Hobby the
 // app sends its own: one POST per request, made after the response has gone
 // (see background() in observe.ts), so visitors never wait for it.
 //
@@ -12,6 +12,15 @@ const INSTANCE_ID = process.env.GRAFANA_INSTANCE_ID ?? "1884408"; // not secret:
 export const SERVICE_NAME = "api-feature-lab";
 
 export type LogLine = { ts: string; level: "info" | "warn" | "error"; msg: string; requestId?: string; [field: string]: unknown };
+
+/** A finished span. start/end are nanoseconds since 1970, as strings (OTLP's JSON form). */
+export type Span = {
+  traceId: string; spanId: string; parentSpanId?: string;
+  name: string; kind: number; start: string; end: string;
+  attributes: Record<string, unknown>;
+  /** Set when the work failed: the span's status becomes ERROR with this message. */
+  error?: string;
+};
 
 export const exporting = () => !!process.env.GRAFANA_OTLP_TOKEN;
 
@@ -58,22 +67,53 @@ export function otlpLogs(lines: LogLine[], resource: Record<string, unknown>) {
   };
 }
 
-/** Send log lines to Grafana. Never throws: telemetry must not break the API. */
-export async function exportLogs(lines: LogLine[], resource: Record<string, unknown>) {
-  const token = process.env.GRAFANA_OTLP_TOKEN;
-  if (!token || lines.length === 0) return;
+/** The OTLP/JSON body for some spans (exported for tests). */
+export function otlpSpans(spans: Span[], resource: Record<string, unknown>) {
+  return {
+    resourceSpans: [{
+      resource: { attributes: attributes(resource) },
+      scopeSpans: [{
+        scope: { name: `${SERVICE_NAME}/observe` },
+        spans: spans.map((s) => ({
+          traceId: s.traceId,
+          spanId: s.spanId,
+          ...(s.parentSpanId ? { parentSpanId: s.parentSpanId } : {}),
+          name: s.name,
+          kind: s.kind,
+          startTimeUnixNano: s.start,
+          endTimeUnixNano: s.end,
+          attributes: attributes(s.attributes),
+          // OTLP status codes: 1 OK, 2 ERROR.
+          status: s.error ? { code: 2, message: s.error } : { code: 1 },
+        })),
+      }],
+    }],
+  };
+}
+
+async function post(signal: "logs" | "traces", body: unknown, token: string) {
   try {
-    const res = await fetch(`${ENDPOINT}/v1/logs`, {
+    const res = await fetch(`${ENDPOINT}/v1/${signal}`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Basic ${btoa(`${INSTANCE_ID}:${token}`)}` },
-      body: JSON.stringify(otlpLogs(lines, resource)),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) failed(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) failed(signal, `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
   } catch (e) {
-    failed((e as Error).message);
+    failed(signal, (e as Error).message);
   }
 }
 
+/** Send log lines and spans to Grafana, in parallel. Never throws: telemetry must not break the API. */
+export async function exportTelemetry({ lines, spans }: { lines: LogLine[]; spans: Span[] }, resource: Record<string, unknown>) {
+  const token = process.env.GRAFANA_OTLP_TOKEN;
+  if (!token) return;
+  await Promise.all([
+    lines.length ? post("logs", otlpLogs(lines, resource), token) : null,
+    spans.length ? post("traces", otlpSpans(spans, resource), token) : null,
+  ]);
+}
+
 // Printed, not exported: a failing exporter mustn't feed itself.
-const failed = (reason: string) => console.warn(JSON.stringify({ ts: new Date().toISOString(), level: "warn", msg: "telemetry export failed", reason }));
+const failed = (signal: string, reason: string) => console.warn(JSON.stringify({ ts: new Date().toISOString(), level: "warn", msg: "telemetry export failed", signal, reason }));

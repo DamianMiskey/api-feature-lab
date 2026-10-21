@@ -3,7 +3,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import type { AuthEnv } from "./auth";
 import { db } from "./db/client";
 import { idempotencyKeys } from "./db/schema";
-import { annotate } from "./observe";
+import { annotate, span } from "./observe";
 import { problem } from "./problem";
 import { clientId } from "./ratelimit";
 
@@ -49,14 +49,16 @@ export const idempotency = ({ required }: { required: boolean }): MiddlewareHand
   const client = clientId(c);
   const d = await db();
 
-  // Expired keys, and first attempts that died half-way, free their key.
-  await d.delete(idempotencyKeys).where(and(eq(idempotencyKeys.client, client), eq(idempotencyKeys.key, key), sql`(
-    ${idempotencyKeys.createdAt} < ${new Date(Date.now() - TTL_MS)} or
-    (${idempotencyKeys.status} is null and ${idempotencyKeys.createdAt} < ${new Date(Date.now() - STALE_MS)}))`));
+  const claimed = await span("idempotency claim", {}, async () => {
+    // Expired keys, and first attempts that died half-way, free their key.
+    await d.delete(idempotencyKeys).where(and(eq(idempotencyKeys.client, client), eq(idempotencyKeys.key, key), sql`(
+      ${idempotencyKeys.createdAt} < ${new Date(Date.now() - TTL_MS)} or
+      (${idempotencyKeys.status} is null and ${idempotencyKeys.createdAt} < ${new Date(Date.now() - STALE_MS)}))`));
 
-  // Claim the key. The primary key makes this atomic: of two concurrent
-  // requests with the same key, exactly one inserts the row.
-  const claimed = await d.insert(idempotencyKeys).values({ client, key, fingerprint }).onConflictDoNothing().returning();
+    // Claim the key. The primary key makes this atomic: of two concurrent
+    // requests with the same key, exactly one inserts the row.
+    return d.insert(idempotencyKeys).values({ client, key, fingerprint }).onConflictDoNothing().returning();
+  });
   if (claimed.length === 0) {
     const [seen] = await d.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.client, client), eq(idempotencyKeys.key, key)));
     if (!seen) return problem(c, 409, "request-in-progress", { detail: "Retry in a moment." });

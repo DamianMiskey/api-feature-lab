@@ -3,7 +3,7 @@ import { sign, verify } from "hono/jwt";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { db } from "./db/client";
 import { apiKeys } from "./db/schema";
-import { annotate } from "./observe";
+import { annotate, span } from "./observe";
 import { problem } from "./problem";
 
 // Two kinds of credentials, both sent as "Authorization: Bearer …":
@@ -94,7 +94,8 @@ export const authenticate: MiddlewareHandler<AuthEnv> = async (c, next) => {
   if (!header) return next();
   const [scheme, credential] = header.split(" ");
   if (scheme?.toLowerCase() !== "bearer" || !credential) return unauthorized(c, "Use Authorization: Bearer <key or token>");
-  const auth = credential.startsWith("lab_") ? await fromApiKey(credential) : await fromJwt(credential);
+  const method = credential.startsWith("lab_") ? "api-key" : "jwt";
+  const auth = await span("authenticate", { "auth.method": method }, () => (method === "api-key" ? fromApiKey(credential) : fromJwt(credential)));
   if (!auth) return unauthorized(c, credential.startsWith("lab_") ? "Unknown, revoked or expired API key" : "Invalid or expired token");
   c.set("auth", auth);
   annotate({ authMethod: auth.method });

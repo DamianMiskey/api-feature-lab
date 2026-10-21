@@ -2,7 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { sql } from "drizzle-orm";
 import type { AuthEnv } from "./auth";
 import { db } from "./db/client";
-import { annotate } from "./observe";
+import { annotate, span } from "./observe";
 import { problem } from "./problem";
 
 // A sliding-window rate limiter on Postgres. Each client gets a counter per
@@ -46,7 +46,7 @@ export async function hit(id: string, windowSec: number) {
 
 export const rateLimit = ({ name, limit, windowSec }: Limit): MiddlewareHandler<AuthEnv> => async (c, next) => {
   const max = typeof limit === "function" ? limit(c) : limit;
-  const { estimate, resetSec } = await hit(`${name}:${clientId(c)}`, windowSec);
+  const { estimate, resetSec } = await span(`rate limit ${name}`, { "ratelimit.name": name, "ratelimit.limit": max }, () => hit(`${name}:${clientId(c)}`, windowSec));
   // The IETF RateLimit headers: the policy (quota per window) and where this
   // client stands (remaining, seconds until it resets).
   c.header("RateLimit-Policy", `"${name}";q=${max};w=${windowSec}`);

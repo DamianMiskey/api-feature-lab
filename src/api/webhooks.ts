@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "./db/client";
-import { annotate, outgoingTraceparent } from "./observe";
+import { annotate, outgoingTraceparent, span, SpanKind, spanResult } from "./observe";
 import { type DeliveryRow, type EventRow, events, webhookAttempts, webhookDeliveries, webhookEndpoints } from "./db/schema";
 
 // Webhooks: the API calls its subscribers when something happens, instead of
@@ -134,6 +134,7 @@ async function attempt(delivery: DeliveryRow, now: Date) {
     response = `network error: ${(e as Error).message}`;
   }
   const attempts = delivery.attempts + 1;
+  spanResult({ "http.response.status_code": status }, status >= 200 && status < 300 ? undefined : response.slice(0, 120));
   await d.insert(webhookAttempts).values({ deliveryId: delivery.id, attempt: attempts, responseStatus: status, response });
   const ok = status >= 200 && status < 300;
   await d.update(webhookDeliveries).set(ok
@@ -164,7 +165,11 @@ export async function processDue({ endpointId, eventId, now = new Date() }: { en
     .where(and(due, inArray(webhookDeliveries.id, d.select({ id: webhookDeliveries.id }).from(webhookDeliveries).where(scope).orderBy(webhookDeliveries.nextAttemptAt).limit(10))))
     .returning();
   // The lease is in the row now; attempt() works from the claimed copy.
-  for (const delivery of claimed) await attempt(delivery, now);
+  for (const delivery of claimed) {
+    // A client span per attempt; the traceparent it sends names this span, so
+    // the receiving request appears inside it in the trace.
+    await span("webhook deliver", { "webhook.delivery_id": delivery.id, "webhook.attempt": delivery.attempts + 1 }, () => attempt(delivery, now), SpanKind.CLIENT);
+  }
   if (claimed.length) annotate({ webhookAttempts: claimed.length });
   return claimed.length;
 }

@@ -33,13 +33,15 @@ app.use("*", observe);
 
 // /platform is read cross-origin too: the Portability page on api.djmiskey.com
 // asks both deployments (this app on Vercel and on Cloudflare) the same thing.
-const ORIGINS = new Set(["https://motion.djmiskey.com", "https://api.djmiskey.com"]);
+// The Observability lab (obs.djmiskey.com) reads leaderboards from visitors'
+// browsers too, sending a traceparent so it can find the trace afterwards.
+const ORIGINS = new Set(["https://motion.djmiskey.com", "https://api.djmiskey.com", "https://obs.djmiskey.com"]);
 app.use("/platform", cors({ origin: (origin) => (ORIGINS.has(origin) || /^http:\/\/localhost:\d+$/.test(origin) ? origin : null), allowMethods: ["GET"] }));
 app.use("/scores/*", cors({
   origin: (origin) => (ORIGINS.has(origin) || /^http:\/\/localhost:\d+$/.test(origin) ? origin : null),
   allowMethods: ["GET", "POST"],
-  allowHeaders: ["content-type", "idempotency-key", "last-event-id"],
-  exposeHeaders: ["etag", "idempotent-replayed", "ratelimit", "ratelimit-policy", "retry-after"],
+  allowHeaders: ["content-type", "idempotency-key", "last-event-id", "traceparent"],
+  exposeHeaders: ["etag", "idempotent-replayed", "ratelimit", "ratelimit-policy", "retry-after", "x-request-id"],
   maxAge: 600,
 }));
 
