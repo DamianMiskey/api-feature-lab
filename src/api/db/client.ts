@@ -51,10 +51,11 @@ let ready: Promise<Db> | undefined;
 /** The database, connected and with its tables created, once per instance. */
 export function db(): Promise<Db> {
   ready ??= connect().then(async (d) => {
-    // The Worker shares the production database, whose tables already exist.
-    if (process.env.LAB_SCHEMA === "skip") return d;
-    // On a new instance, the first request pays for this: one span around the
-    // lot, so a cold start is easy to spot in a trace.
+    // Production's tables are created at build time (scripts/migrate.mts), and
+    // the Worker shares that database: neither repeats it on a cold start.
+    if (process.env.LAB_SCHEMA === "skip" || process.env.VERCEL_ENV === "production") return d;
+    // In-memory PGlite (local, tests, previews) starts empty: its first request
+    // creates the tables. One span around the lot, so it's easy to spot in a trace.
     await span("db.ensure-schema", {}, async () => {
       for (const statement of SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean)) {
         await d.execute(statement);
