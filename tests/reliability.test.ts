@@ -105,6 +105,10 @@ describe("leaderboards", () => {
     expect(preflight.headers.get("access-control-allow-headers")).toContain("idempotency-key");
     const read = await send("GET", "/scores?game=runner", undefined, { origin: "https://motion.djmiskey.com" });
     expect(read.headers.get("access-control-expose-headers")).toContain("idempotent-replayed");
+    const obs = await send("OPTIONS", "/scores", undefined, { origin: "https://obs.djmiskey.com", "access-control-request-method": "GET", "access-control-request-headers": "traceparent" });
+    expect(obs.headers.get("access-control-allow-origin")).toBe("https://obs.djmiskey.com");
+    expect(obs.headers.get("access-control-allow-headers")).toContain("traceparent");
+    expect(read.headers.get("access-control-expose-headers")).toContain("x-request-id");
     const other = await send("GET", "/scores?game=runner", undefined, { origin: "https://evil.example" });
     expect(other.headers.get("access-control-allow-origin")).toBeNull();
   });
