@@ -75,6 +75,9 @@ describe("leaderboards", () => {
     expect(res.status).toBe(422);
     expect((await res.json()).errors.map((e: { path: string }) => e.path).sort()).toEqual(["game", "initials", "value"]);
     expect((await score({ game: "stacker", initials: "MAX", value: 501 })).status).toBe(422);
+    // Tower Toppler's six levels can total 25,950: well within its cap.
+    expect((await score({ game: "toppler", initials: "BIG", value: 25_950 })).status).toBe(201);
+    expect((await score({ game: "toppler", initials: "BIG", value: 40_001 })).status).toBe(422);
   });
 
   it("rank best first: higher points, but lower times for Marble Maze", async () => {
@@ -238,16 +241,16 @@ describe("Server-Sent Events", () => {
     expect(first).toMatchObject({ event: "board", retry: "3000" });
     expect(JSON.parse(first.data)).toMatchObject({ game: "toppler", better: "higher" });
 
-    await score({ game: "toppler", initials: "SSE", value: 19_999 });
+    await score({ game: "toppler", initials: "SSE", value: 39_999 });
     const second = (await stream.next()).value!;
     const board = JSON.parse(second.data);
-    expect(board.latest).toMatchObject({ initials: "SSE", value: 19_999, rank: 1 });
+    expect(board.latest).toMatchObject({ initials: "SSE", value: 39_999, rank: 1 });
     expect(board.entries[0].initials).toBe("SSE");
     expect(Number(second.id)).toBeGreaterThan(Number(first.id));
     await stream.return(undefined);
 
     // Reconnecting with the id it missed from: the missed score comes first.
-    await score({ game: "toppler", initials: "GAP", value: 19_998 });
+    await score({ game: "toppler", initials: "GAP", value: 39_998 });
     const resumed = events(await send("GET", "/scores/stream?game=toppler", undefined, { "last-event-id": second.id }));
     expect(JSON.parse((await resumed.next()).value!.data).latest.initials).toBe("GAP");
     await resumed.return(undefined);

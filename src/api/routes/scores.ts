@@ -17,7 +17,8 @@ import { processDue, recordEvent } from "../webhooks";
 // so a flaky connection can't put one run on the board twice.
 
 export const GAMES = {
-  toppler: { name: "Tower Toppler", unit: "points", better: "higher", max: 20_000 },
+  // Six levels: a perfect run scores 25,950 (the Motion lab's levels.ts); room for more.
+  toppler: { name: "Tower Toppler", unit: "points", better: "higher", max: 40_000 },
   marble: { name: "Marble Maze", unit: "ms", better: "lower", max: 3_600_000 }, // all three levels, in milliseconds
   stacker: { name: "Stacker", unit: "slabs", better: "higher", max: 500 },
   runner: { name: "Starfield Runner", unit: "points", better: "higher", max: 1_000_000 },
