@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeSwitch } from "@djmiskey/lab-tokens/ThemeSwitch";
 import { categories, features } from "@/lib/features";
 import { cx } from "./ui";
 
@@ -38,7 +39,8 @@ export function Nav() {
           </div>
         );
       })}
-      <a href="/api/openapi.json" className="mt-4 block w-full border-t border-line px-2 pt-3 text-sm">openapi.json ↗</a>
+      <div className="mt-4 w-full border-t border-line px-2 pt-3"><ThemeSwitch /></div>
+      <a href="/api/openapi.json" className="mt-2 block w-full px-2 text-sm">openapi.json ↗</a>
     </nav>
   );
 }
