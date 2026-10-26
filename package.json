@@ -17,6 +17,7 @@
     "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@djmiskey/lab-tokens": "github:DamianMiskey/lab-tokens#v1.0.0",
     "@electric-sql/pglite": "0.5.10",
     "@hono/trpc-server": "0.4.2",
     "@hono/zod-openapi": "1.6.3",

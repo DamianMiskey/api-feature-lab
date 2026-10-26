@@ -34,6 +34,8 @@ const nextConfig: NextConfig = {
   // Cache Components: pages are static shells; the API runs per request.
   cacheComponents: true,
   poweredByHeader: false,
+  // The shared look (@djmiskey/lab-tokens) ships TypeScript source.
+  transpilePackages: ["@djmiskey/lab-tokens"],
   // PGlite (local and test database) ships WebAssembly and data files that
   // must be loaded from node_modules at runtime, not bundled.
   serverExternalPackages: ["@electric-sql/pglite"],
